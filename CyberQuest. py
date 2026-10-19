@@ -1,0 +1,270 @@
+import random
+import json
+import os
+
+# CYBER QUEST: a terminal-based dungeon adventure
+# Python 3 | No external libraries required
+
+SAVE_FILE = "cyber_quest_save.json"
+
+ROOMS = {
+    "Entrance": {
+        "description": "Cold neon lights flicker over a sealed steel door.",
+        "exits": {"north": "Training Hall", "east": "Abandoned Lab"},
+        "enemy": None, "item": "small potion", "cleared": False
+    },
+    "Training Hall": {
+        "description": "Broken training drones lie scattered across the floor.",
+        "exits": {"south": "Entrance", "east": "Reactor"},
+        "enemy": {"name": "Rogue Drone", "hp": 22, "attack": 6, "xp": 12},
+        "item": "energy cell", "cleared": False
+    },
+    "Abandoned Lab": {
+        "description": "A glass lab is full of cracked screens and strange samples.",
+        "exits": {"west": "Entrance", "north": "Reactor"},
+        "enemy": {"name": "Mutant Slime", "hp": 28, "attack": 7, "xp": 16},
+        "item": "large potion", "cleared": False
+    },
+    "Reactor": {
+        "description": "The reactor pulses. A console asks: What is 7 * 8?",
+        "exits": {"west": "Training Hall", "south": "Abandoned Lab",
+                  "north": "Security Gate"},
+        "enemy": {"name": "Security Bot", "hp": 35, "attack": 8, "xp": 22},
+        "item": "keycard", "cleared": False, "puzzle": True
+    },
+    "Security Gate": {
+        "description": "A huge gate blocks the route to the core.",
+        "exits": {"south": "Reactor", "north": "Core Chamber"},
+        "enemy": {"name": "Elite Sentinel", "hp": 44, "attack": 10, "xp": 30},
+        "item": "shield module", "cleared": False
+    },
+    "Core Chamber": {
+        "description": "The AI core floats inside a ring of electric blue light.",
+        "exits": {"south": "Security Gate"},
+        "enemy": {"name": "NEXUS, the Rogue AI", "hp": 70, "attack": 12, "xp": 60},
+        "item": "core crystal", "cleared": False, "boss": True
+    }
+}
+
+def fresh_game():
+    return {
+        "player": {
+            "name": input("Choose your hacker name: ").strip() or "Runner",
+            "hp": 100, "max_hp": 100, "attack": 12, "defense": 2,
+            "level": 1, "xp": 0, "coins": 0, "potions": 2,
+            "inventory": [], "room": "Entrance", "turns": 0
+        },
+        "rooms": json.loads(json.dumps(ROOMS)),
+        "won": False
+    }
+
+def save_game(game):
+    with open(SAVE_FILE, "w", encoding="utf-8") as f:
+        json.dump(game, f, indent=2)
+    print("Game saved.")
+
+def load_game():
+    if not os.path.exists(SAVE_FILE):
+        print("No save file found. Starting a new game.")
+        return fresh_game()
+    try:
+        with open(SAVE_FILE, "r", encoding="utf-8") as f:
+            game = json.load(f)
+        print("Save loaded. Welcome back,", game["player"]["name"] + "!")
+        return game
+    except (json.JSONDecodeError, KeyError, OSError):
+        print("Save file could not be read. Starting a new game.")
+        return fresh_game()
+
+def level_up(p):
+    while p["xp"] >= p["level"] * 25:
+        p["xp"] -= p["level"] * 25
+        p["level"] += 1
+        p["max_hp"] += 12
+        p["hp"] = p["max_hp"]
+        p["attack"] += 3
+        p["defense"] += 1
+        print(f"\nLEVEL UP! You are now level {p['level']}.")
+        print("Your health, attack, and defense have increased!")
+
+def show_status(p):
+    print("\n" + "=" * 42)
+    print(f"{p['name']} | Level {p['level']} | XP {p['xp']}")
+    print(f"HP {p['hp']}/{p['max_hp']} | Attack {p['attack']} | Defense {p['defense']}")
+    print(f"Coins: {p['coins']} | Potions: {p['potions']}")
+    print("Inventory:", ", ".join(p["inventory"]) if p["inventory"] else "empty")
+    print("=" * 42)
+
+def fight(game, enemy_data):
+    p = game["player"]
+    enemy = dict(enemy_data)
+    enemy_hp = enemy["hp"]
+    print(f"\n⚔️  {enemy['name']} attacks!")
+
+    while enemy_hp > 0 and p["hp"] > 0:
+        print(f"\nYour HP: {p['hp']} | {enemy['name']} HP: {enemy_hp}")
+        print("1) Attack  2) Heavy attack  3) Use potion  4) Try to flee")
+        choice = input("> ").strip()
+
+        if choice == "1":
+            damage = random.randint(max(2, p["attack"] - 3), p["attack"] + 4)
+            enemy_hp -= damage
+            print(f"You deal {damage} damage.")
+        elif choice == "2":
+            if random.random() < 0.62:
+                damage = random.randint(p["attack"] + 5, p["attack"] + 12)
+                enemy_hp -= damage
+                print(f"Heavy attack hits for {damage} damage!")
+            else:
+                print("Your heavy attack misses!")
+        elif choice == "3":
+            if p["potions"] <= 0:
+                print("No potions left.")
+                continue
+            p["potions"] -= 1
+            healing = min(30, p["max_hp"] - p["hp"])
+            p["hp"] += healing
+            print(f"You restore {healing} HP.")
+        elif choice == "4":
+            if enemy.get("name") == "NEXUS, the Rogue AI":
+                print("The core locks the exits. You cannot flee!")
+            elif random.random() < 0.45:
+                print("You escaped!")
+                return "escaped"
+            else:
+                print("Escape failed!")
+        else:
+            print("Choose 1, 2, 3, or 4.")
+            continue
+
+        if enemy_hp <= 0:
+            break
+
+        damage = max(1, enemy["attack"] - p["defense"] + random.randint(-2, 2))
+        p["hp"] -= damage
+        print(f"{enemy['name']} hits you for {damage} damage.")
+
+    if p["hp"] <= 0:
+        print("\nYou have been defeated. The mission ends here.")
+        return "lost"
+
+    reward = random.randint(5, 15) + enemy["xp"] // 2
+    p["coins"] += reward
+    p["xp"] += enemy["xp"]
+    print(f"\n{enemy['name']} defeated! +{enemy['xp']} XP and {reward} coins.")
+    level_up(p)
+    return "won"
+
+def inspect_room(game):
+    p = game["player"]
+    room = game["rooms"][p["room"]]
+    print(f"\n📍 {p['room']}")
+    print(room["description"])
+    if room.get("item") and not room["cleared"]:
+        print("You notice something:", room["item"])
+    print("Exits:", ", ".join(room["exits"].keys()))
+
+def explore(game):
+    p = game["player"]
+    room = game["rooms"][p["room"]]
+
+    if room.get("puzzle") and not room.get("puzzle_solved"):
+        answer = input("Console puzzle: What is 7 * 8? ").strip()
+        if answer != "56":
+            print("Incorrect. The console shocks you for 8 damage.")
+            p["hp"] -= 8
+            if p["hp"] <= 0:
+                print("You have been defeated.")
+                return
+            return
+        room["puzzle_solved"] = True
+        print("Correct! The reactor console unlocks a route.")
+        p["coins"] += 10
+
+    enemy = room.get("enemy")
+    if enemy and not room["cleared"]:
+        result = fight(game, enemy)
+        if result == "lost":
+            game["won"] = False
+            return
+        if result == "escaped":
+            return
+        room["cleared"] = True
+    elif not room["cleared"]:
+        print("The room is quiet. You search it.")
+        room["cleared"] = True
+
+    item = room.get("item")
+    if item and item not in p["inventory"]:
+        p["inventory"].append(item)
+        print(f"You collected: {item}")
+        if item == "small potion":
+            p["potions"] += 1
+        elif item == "large potion":
+            p["potions"] += 2
+        elif item == "energy cell":
+            p["attack"] += 2
+            print("The energy cell boosts your attack by 2!")
+        elif item == "shield module":
+            p["defense"] += 3
+            print("The shield module boosts your defense by 3!")
+        elif item == "core crystal":
+            game["won"] = True
+            print("\n🏆 YOU SAVED THE CITY! NEXUS is offline. YOU WIN!")
+
+def move(game):
+    p = game["player"]
+    room = game["rooms"][p["room"]]
+    direction = input("Move which direction? ").strip().lower()
+    destination = room["exits"].get(direction)
+    if not destination:
+        print("You cannot go that way. Available exits:", ", ".join(room["exits"].keys()))
+        return
+    if destination == "Core Chamber" and "keycard" not in p["inventory"]:
+        print("The core door needs a keycard. Explore the Reactor first.")
+        return
+    p["room"] = destination
+    p["turns"] += 1
+    inspect_room(game)
+
+def main():
+    print("=" * 42)
+    print("       C Y B E R   Q U E S T")
+    print("  A Python dungeon adventure")
+    print("=" * 42)
+    choice = input("1) New game  2) Load saved game\n> ").strip()
+    game = load_game() if choice == "2" else fresh_game()
+    p = game["player"]
+
+    while p["hp"] > 0 and not game["won"]:
+        print("\nActions: explore | move | status | save | help | quit")
+        action = input(f"{p['name']} @ {p['room']} > ").strip().lower()
+        if action == "explore":
+            explore(game)
+        elif action == "move":
+            move(game)
+        elif action == "status":
+            show_status(p)
+        elif action == "save":
+            save_game(game)
+        elif action == "help":
+            print("Explore rooms to fight enemies and collect items.")
+            print("Use move to travel through exits. Get the keycard in Reactor.")
+            print("In combat: attack, heavy attack, potion, or flee.")
+            print("Save your progress before quitting.")
+        elif action == "quit":
+            save_game(game)
+            print("Progress saved. See you next time!")
+            break
+        elif action == "":
+            continue
+        else:
+            print("Unknown action. Type 'help' for instructions.")
+
+    if game["won"]:
+        print(f"\nMission complete, {p['name']}! Turns taken: {p['turns']}")
+    elif p["hp"] <= 0:
+        print("Tip: load your save, use potions, and upgrade your character.")
+
+if __name__ == "__main__":
+    main()
